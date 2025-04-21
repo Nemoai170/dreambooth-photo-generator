@@ -8,11 +8,11 @@ on:
         description: The name of the Replicate model to publish, in the format `your-replicate-username/desired-model-name`.
       prompt-identifier:
         required: true
-        description: A short string representing your custom trained style or concept.
+        description: A short string like `zxz` representing your custom concept for prompts.
         default: zxz
       max-train-steps:
         required: true
-        description: Total number of training steps to perform.
+        description: Number of training steps (e.g. 2000).
         type: number
         default: 2000
 
@@ -27,9 +27,9 @@ jobs:
       - name: Check secrets
         if: ${{ env.replicate-api-token == '' }}
         run: |
-          echo "🙈 Uh oh! Missing repository secret: REPLICATE_API_TOKEN"
+          echo "❌ Missing REPLICATE_API_TOKEN secret!"
           exit 1
-
+      
       - name: Checkout code
         uses: actions/checkout@v3
 
@@ -40,10 +40,21 @@ jobs:
       - name: Upload training data
         id: upload-training-data
         run: |
+          echo "🔁 Получаем URL для загрузки..."
           RESPONSE=$(curl -s -X POST -H "Authorization: Token ${{ secrets.REPLICATE_API_TOKEN }}" https://dreambooth-api-experimental.replicate.com/v1/upload)
+          
+          echo "📦 Ответ от Replicate:"
+          echo "$RESPONSE"
+          
           UPLOAD_URL=$(echo "$RESPONSE" | jq -r ".upload_url")
           SERVING_URL=$(echo "$RESPONSE" | jq -r ".serving_url")
 
+          if [ -z "$UPLOAD_URL" ] || [ -z "$SERVING_URL" ]; then
+            echo "❌ Не удалось получить upload_url или serving_url. Прекращаю работу."
+            exit 1
+          fi
+
+          echo "📤 Загружаем zip..."
           curl -X PUT -H "Content-Type: application/zip" --upload-file data.zip "$UPLOAD_URL"
 
           echo "INSTANCE_DATA_URL=$SERVING_URL" >> $GITHUB_ENV
@@ -51,6 +62,7 @@ jobs:
 
       - name: Start training
         run: |
+          echo "🚀 Запускаем обучение модели..."
           curl -s -X POST \
           -H "Authorization: Token ${{ secrets.REPLICATE_API_TOKEN }}" \
           -H "Content-Type: application/json" \
@@ -68,6 +80,5 @@ jobs:
 
       - name: Link to model
         run: |
-          echo "🚂 Your model is now training!"
-          echo "This takes about 10–30 minutes."
-          echo "Track your model here: https://replicate.com/${{ inputs.model-name }}"
+          echo "🚂 Модель обучается!"
+          echo "Перейди на https://replicate.com/${{ inputs.model-name }} чтобы отслеживать процесс."
